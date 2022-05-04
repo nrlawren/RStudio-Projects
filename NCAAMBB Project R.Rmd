@@ -1,0 +1,213 @@
+---
+title: "NCAA Mens Basketball Tournament Data"
+author: "Nash Lawrence"
+date: "4/20/22"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Install and load the packages needed for this assignment
+
+```{r echo = FALSE}
+# list of packages require for this assignment
+packages = c("tidyverse", "ggplot2", "readxl")
+
+## now load or install and load
+package.check <- lapply(
+  packages,
+  FUN = function(x) {
+    if (!require(x, character.only=TRUE)) {
+      install.packages(x, dependencies=TRUE)
+      library(x, character.only=TRUE)
+    }
+  }
+)
+```
+## 1.) Give description of your dataset including a description of the variables
+
+My data set is a CSV file I made back in March to analyze all 68 teams in the NCAA Men's Basketball Tournament
+
+1. team_id: each teams unique numeric code numbered 1-68
+2. team_name: the name of each school, some abbreviated (Ex-"UNC" for North Carolina University)
+3. team_conference: the abbreviation of the conference the school is in (Ex- "ACC" or "Pac 12")
+4. p6_conference: a boolean to see if the school is in one of the main 6 conferences(ACC/Big East/Big Ten/Big 12/Pac 12/SEC). Y= Yes, N= No
+5. conference_champ: a boolean to see if the school won their conference tournament championship. Y=Yes, N=No
+6. tourney_seed: the number seed the school is in their respective region. Integer 1-16, 1=Best rank, 16=Worst rank
+7. tourney_region: the regional bracket each school is in(West/South/East/Midwest)
+8. opponent_name: the name of the school that each team is playing in their first tournament game
+9. total_wins: the total amount of wins the school had on the season overall
+10. total_loss: the total amount of losses the school had on the season overall
+11. conference_wins: the total amount of wins the school had against teams in their conference
+12. conference_loss: the total amount of losses the school had against teams in their conference
+13. home_wins: the total amount of wins the school had in home games
+14. home_loss: the total amount of losses the school had in home games
+15. road/n_wins: the total amount of wins the school had in away or neutral site games
+16. road/n_loss: the total amount of losses the school had in away or neutral site games
+17. SOS: the schools ranking in Strength of Schedule (Rank 1-354)
+18. SOR: the schools ranking in the Strength of Record metric which measures how impressive a teams record is based on opponents
+19. KP: the schools ranking in KenPom, a system that ranks teams based on a number of metrics and statistics
+20. NET: the schools ranking in the NCAA Evaluation Tool, a system that ranks teams based on metrics and statistics
+21. off_efficiencyRank: the schools ranking in offensive efficiency, which is points scored per possession
+22. def_efficiencyRank: the schools ranking in defensive efficiency, which is points allowed per possession
+23. pace_rank: the schools ranking in possessions per game to measure which teams play at a fast/slow pace
+24. team_ppg: the schools points per game average
+25. fg_percentage: the schools overall shooting percentage
+26. three_percentage: the schools overall shooting percentage on three point shots
+27. ft_percentage: the schools overall shooting percentage on free throw shots
+28. 3PA_perGame: the schools average for three point shots attempted each game
+29. assists_perGame: the schools assists per game average
+30. rebounds_perGame: the schools rebounds per game average
+31. offReb_perGame: the schools offensive rebounds per game average
+32. steals_pg: the schools steals per game average
+33. blocks_pg: the schools blocks per game average
+34. turnovers_pg: the schools turnovers per game average (fewer = better)
+
+
+## 2.) Load the dataset and save it to a RTibble/Pandas dataframe object and display the first 5 rows
+
+```{r}
+url <- "C:/Users/stewi/BUS440/Personal Projects/teamData.csv"
+teams <- read_csv(url)
+teams %>% head()
+```
+
+## 3.) State four numerical and categorical columns you will investigate, and describe why you chose them.
+
+The categorical variables I am going to use are: team_name, team_conference, p6_conference, tourney_region.
+The numerical variables I am going to use are: SOR, off_efficiencyRank, def_efficiencyRank, team_ppg.
+
+I am using team_name to identify each team when comparing data, I am using team_conference to compare data between different conferences. I am using p6_conference to compare data between teams in major conferences and teams in mid-major/small conferences. I am using tourney_region to compare data between teams in each region since every region has a team seeded 1-16.
+
+I am using SOR because strength of record is a great metric which takes plenty of things into account when ranking how impressive a teams resume is. I am using off_efficiency because it is a great statistic to determine how often a team scores and not just how many points they score total (because some teams have less possessions per game). I am also using def_efficiency because it is a great statistic to determine how often a team allows their opponent to score. I am using team_ppg because it shows which teams score the most points per game and it is a popular statistic.
+
+## 4.) Create some numerical summaries and display the results in a table
+
+***Number of P6 conferences and non-P6 conferences per region***
+
+```{r}
+numeric_summary <- table(teams$p6_conference, teams$tourney_region)
+numeric_summary
+```
+
+***Find the number of teams that each conference has for each seed number***
+
+```{r}
+numeric_tbl <- table(teams$team_conference, teams$tourney_seed)
+numeric_tbl
+```
+
+## 5.) Include measures of center (mean, median) and spread (standard deviation) across a single grouping variable
+
+***Strength of Record (SOR) for each of the Power 6 conferences***
+
+```{r}
+SOR_measures <- teams %>%
+  filter(p6_conference == "Y") %>%
+  group_by(team_conference) %>%
+  select(team_conference, SOR) %>%
+  summarise("SOR Average" = mean(SOR, na.rm = TRUE), "SOR Median" = median(SOR, na.rm = TRUE),
+            "SOR Standard Deviation" = sd(SOR, na.rm = TRUE),) %>%
+  rename("Conference" = team_conference)
+
+SOR_measures
+```
+
+## 6.) Create a new categorical column based on a numerical column
+
+***25 years straight the national champion has been top 40 in offensive efficiency and top 25 in defensive efficiency. If a team meets that criteria label them "Contenders", if they do not (most teams) then label them "Frauds".***
+
+```{r}
+mutate_contender <- teams %>%
+  select(team_name) %>%
+  mutate(Contender_Frauds = ifelse ((teams$off_efficiencyRank < 41 & teams$def_efficiencyRank < 26),
+                                      "Contender", "Frauds")) %>%
+  rename("Team" = team_name)
+
+mutate_contender
+```
+
+## 7.) Create a bar plot for two categorical variables. For one use the Contenders/Frauds column
+
+***The number of teams that are Frauds (59) and the number of teams that are Contenders(9)***
+
+```{r}
+mutated_bar <- ggplot(data = mutate_contender, (aes(x = Contender_Frauds)))
+mutated_bar + geom_bar(color = "black", fill = "red", size = 2, bindwidth = 1) + labs(x = "Contenders/Frauds", y = "Count of Teams\n", title = "Number of Teams in each Classification based on Metrics") + theme(plot.title = element_text(hjust = 0.5)) + scale_y_continuous(breaks=c(0,10,20,30,40,50,60))
+```
+
+***Bar plot of the number of tournament teams in each of the Power 6 conferences***
+
+```{r}
+num_teams <- teams %>%
+  filter(p6_conference == "Y") %>%
+  select(team_name, team_conference) %>%
+  rename("Conference" = team_conference, "Team" = team_name)
+```
+
+```{r}
+p6_conferenceReps <- ggplot(data = num_teams, (aes(x = Conference, fill = Conference)))
+p6_conferenceReps + geom_bar(color = "black", size = 1.5, bindwidth = 1.5) + labs(y = "Number of Tournament Teams\n", x = "", title = "Number of Tournament Teams per Major Conference") + theme(plot.title = element_text(hjust = 0.5)) + scale_y_continuous(breaks=c(0,1,2,3,4,5,6,7,8,9))
+```
+
+## 8.) Create a histogram for a numeric variable
+
+***Points per game intervals that shows the number of teams in each interval***
+
+```{r}
+teamPoints_histo <- ggplot(data = teams, (aes(x = team_ppg)))
+teamPoints_histo + geom_histogram(color = "black", fill = "dark green", size = 1.2, bindwidth = 1, bins = 5) + labs(x = "Points Per Game", y = "Number of Teams per Interval\n", title = "Team Points Per Game Averages") + theme(plot.title = element_text(hjust = 0.5)) + scale_x_continuous(breaks=c(65,70,75,80,85,90)) + scale_y_continuous(breaks=c(0,5,10,15,20,25,30,35))
+```
+
+## 9.) Create an overlayed histogram for a numeric variable across one of the categorical variables
+
+***Team points per game separated by teams in a major 6 conference (blue) and teams in mid majors (pink)***
+
+```{r}
+ppg <- teams$team_ppg
+p6 <- teams$p6_conference
+
+overlay_histo <- ggplot(data = teams, (aes(x = ppg, fill = p6)))
+overlay_histo + geom_histogram(position = "identity", alpha = 0.5, color="black", bins = 20) + labs(x = "Points Per Game Averages\n", y = "Count of Teams\n", title = "Team Points Per Game Averages for Power 6/Non-Power Conferences", fill = "Major Conference") + theme(plot.title = element_text(hjust = 0.5)) + scale_x_continuous(breaks=c(65,70,75,80,85,88)) + scale_y_continuous(breaks=c(0,1,2,3,4,5,6,7,8,9,10,11))
+```
+
+## 10.) Create a scatter plot relating two numeric variables including the least squares regression line
+
+***Each team's offensive and defensive efficiency's plotted on the graph, color coded by seed number***
+
+```{r}
+scat_plot <- ggplot(data = teams, aes(x = off_efficiencyRank, y = def_efficiencyRank))
+scat_plot + geom_point(aes(color = as.factor(tourney_seed))) + geom_smooth(method = "lm") + labs(x = "Offensive Efficiency Rank\n", y = "Defensive Efficiency Rank\n", title = "Efficiency Ranking Correlations", color = "Seed Number") + theme(plot.title = element_text(hjust = 0.5)) + scale_x_continuous(breaks=c(1,50,100,150,200,250,290)) + scale_y_continuous(breaks=c(1,50,100,150,200,250,275))
+```
+
+***Correlation Coefficient***
+
+```{r}
+cor_coeff <- cor(teams$off_efficiencyRank, teams$def_efficiencyRank)
+cor_coeff
+if (cor_coeff > 0) {
+  print('The correlation between the offensive and defensive efficiencies of teams is positive')
+} else {
+  print('The correlation between the offensive and defensive efficiencies of teams is negative')
+}
+```
+
+
+## 11.) Use sckit learn to find the slope and y-intercept of the least squares regression line. Plot the line on the scatter plot.
+
+```{r}
+efficiency_model <- lm(off_efficiencyRank ~ def_efficiencyRank, data = teams)
+efficiency_model
+```
+
+
+
+
+
+
+
+

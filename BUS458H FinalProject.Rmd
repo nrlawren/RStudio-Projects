@@ -1,0 +1,681 @@
+---
+title: 'Project 9/10: Analysis of Home Equity Loan Data'
+authors: "Nash Lawrence & Kevin Wlosinski"
+date: "12/14/2022"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(haven)
+library(ResourceSelection)
+library(ggmosaic)
+library(ggplot2)
+library(caret)
+library(gains)
+library(rpart)
+library(rpart.plot)
+library(pROC)
+library(formatR)
+library(MASS)
+library(boot)
+library(randomForest)
+library(adabag)
+library(neuralnet)
+```
+
+
+
+## Read in the data set
+
+```{r}
+require(haven)
+data <- read_sas("C:/Users/stewi/BUS 458H/final_data.sas7bdat")
+head(data)
+```
+
+
+## Project Description
+
+The data set HMEQ reports characteristics and delinquency information for 5,960 home equity loans. A home equity loan is a loan where the obligor uses the equity of his or her home as the underlying collateral.
+
+-Purpose of the Project: To predict the probability of a loan default
+
+-Potential Research Questions:
+.Which is the most/least important factor when trying to determine the probability of a loan default?
+.What is the benefit(s) of being able to predict the probability of a loan default?
+.Will the predictions be more accurate when more predictor variables are added?
+
+
+Variable Description:
+-BAD: 1 = applicant defaulted on loan or seriously delinquent; 0 = applicant paid loan
+-LOAN: Amount of the loan request
+-MORTDUE: Amount due on existing mortgage
+-VALUE: Value of current property
+-REASON: DebtCon = debt consolidation; HomeImp = home improvement
+-JOB: Occupational categories
+-YOJ: Years at present job
+-DEROG: Number of major derogatory reports
+-DELINQ: Number of delinquent credit lines
+-CLAGE: Age of oldest credit line in months
+-NINQ: Number of recent credit inquiries
+-CLNO: Number of credit lines
+-DEBTINC: Debt-to-income ratio
+
+
+
+## Convert the response variable (BAD) to a factor
+
+```{r}
+data$BAD <- as.factor(data$BAD)
+```
+
+
+
+## Split data into a training and validation data set. No need for a test data set as the sample size is small. Use a 75%-25% split
+
+```{r}
+set.seed(1)
+myIndex <- createDataPartition(data$BAD, p = 0.75, list = FALSE)
+trainingSet <- data[myIndex,]
+validationSet <- data[-myIndex,]
+```
+
+
+
+## Do a thorough descriptive analysis on the training data set. Univariate analysis should be done on each variable
+
+```{r}
+head(trainingSet)
+```
+
+
+```{r}
+table(trainingSet$BAD)
+```
+
+-LOAN = Amount of loan request
+
+```{r}
+mean(trainingSet$LOAN)
+median(trainingSet$LOAN)
+max(trainingSet$LOAN)
+min(trainingSet$LOAN)
+max(trainingSet$LOAN) - min(trainingSet$LOAN)
+sd(trainingSet$LOAN)
+IQR(trainingSet$LOAN)
+```
+
+The average loan request is 18,318.47 and the values vary from 3,300 to 61,400. The average distance from the mean is 10,403.31
+This variable can help predict probability of a loan default because of the wide range of values associated with the loan request and how they might correlate to the BAD.
+
+
+-MORTDUE: Amount due on existing mortgage
+
+```{r}
+mean(trainingSet$MORTDUE)
+median(trainingSet$MORTDUE)
+max(trainingSet$MORTDUE)
+min(trainingSet$MORTDUE)
+max(trainingSet$MORTDUE) - min(trainingSet$MORTDUE)
+sd(trainingSet$MORTDUE)
+IQR(trainingSet$MORTDUE)
+```
+
+The average amount due on an existing mortgage is 72,709.2 while the range is 222,862. The average distance from the mean is 40,411.96
+This variable can help predict the probability of a loan default because of the wide range of values and its correlation to BAD
+
+
+-VALUE: Value of current property
+
+```{r}
+mean(trainingSet$VALUE)
+median(trainingSet$VALUE)
+max(trainingSet$VALUE)
+min(trainingSet$VALUE)
+max(trainingSet$VALUE) - min(trainingSet$VALUE)
+sd(trainingSet$VALUE)
+IQR(trainingSet$VALUE)
+```
+
+The average property value sits at 100,940.8 with a range of 263,531. The average distance from the mean is 50,943.82
+This variable can help predict the probability of a loan default because of the wide range of property values and their correlation to BAD
+
+
+-REASON: DebtCon = debt consolidation; HomeImp = home improvement
+
+```{r}
+table(trainingSet$REASON)
+```
+
+The reason for needing a home equity loan is an important factor for determining the probability of a loan default. The percentage of responses that are debt consolidation (DebtCon) is 70.25% while the percentage of responses which the applicant paid the loan (BAD = 0) is 80.05%. I would say these ratios are close enough to be correlated to one another.
+
+
+
+-JOB: Occupational categories
+
+```{r}
+table(trainingSet$JOB)
+```
+
+With six different occupation categories and the biggest one being "Other" which is a wide variety of jobs, it is hard to say with confidence that one's occupation will be a good predictor variable for BAD.
+
+
+
+-YOJ: Years at present job
+
+```{r}
+mean(trainingSet$YOJ)
+median(trainingSet$YOJ)
+max(trainingSet$YOJ)
+min(trainingSet$YOJ)
+max(trainingSet$YOJ) - min(trainingSet$YOJ)
+sd(trainingSet$YOJ)
+IQR(trainingSet$YOJ)
+```
+
+The average number of years worked at their present job is 8.75, with values ranging from zero years to 41 years. Considering other factors like someone switching jobs frequently or the age of the home owner, it will be hard to confidently say the years spent at their current job will be a good predictor variable for BAD.
+
+
+
+-DEROG: Number of major derogatory reports
+
+```{r}
+table(trainingSet$DEROG)
+mean(trainingSet$DEROG)
+median(trainingSet$DEROG)
+max(trainingSet$DEROG)
+min(trainingSet$DEROG)
+max(trainingSet$DEROG) - min(trainingSet$DEROG)
+sd(trainingSet$DEROG)
+IQR(trainingSet$DEROG)
+```
+
+The percentage of observations with zero major derogatory reports is 87.59%. While the values range from 0-10, you can tell a large majority of the values are close to zero because of the average of 0.22 and the average distance from the mean at 0.78
+I think the values found in this variable will correctly predict whether the applicant defaulted on a loan or paid the loan. I do not think it is one of the more important variables because of most responses being zero and it being obvious that those with multiple major derogatory reports are much more likely to default on a loan.
+
+
+
+-DELINQ: Number of delinquent credit lines
+
+```{r}
+table(trainingSet$DELINQ)
+mean(trainingSet$DELINQ)
+median(trainingSet$DELINQ)
+max(trainingSet$DELINQ)
+min(trainingSet$DELINQ)
+max(trainingSet$DELINQ) - min(trainingSet$DELINQ)
+sd(trainingSet$DELINQ)
+IQR(trainingSet$DELINQ)
+```
+
+Similar to the derogatory reports, most observations have zero delinquent credit lines (79.38%). While the values range from 0-15, you can tell most are closer to zero because of the average being 0.415 and the average distance from the mean being 1.09
+I think the values found in this variable will correctly predict whether the applicant defaulted on a loan or paid the loan. I do not think it is one of the more important variables because of most responses being zero and it being obvious that those with a lot of delinquent credit lines are much more likely to default on a loan.
+
+
+
+-CLAGE: Age of oldest credit line in months
+
+```{r}
+mean(trainingSet$CLAGE)
+median(trainingSet$CLAGE)
+max(trainingSet$CLAGE)
+min(trainingSet$CLAGE)
+max(trainingSet$CLAGE) - min(trainingSet$CLAGE)
+sd(trainingSet$CLAGE)
+IQR(trainingSet$CLAGE)
+```
+
+The average age of the oldest credit line (in months) is 178.04 with a range of 367.4. The average distance from the mean is 78.21
+This variable can help predict the probability of a loan default because of the wide range of values and their correlation to BAD.
+
+
+
+-NINQ: Number of recent credit inquiries
+
+```{r}
+table(trainingSet$NINQ)
+mean(trainingSet$NINQ)
+median(trainingSet$NINQ)
+max(trainingSet$NINQ)
+min(trainingSet$NINQ)
+max(trainingSet$NINQ) - min(trainingSet$NINQ)
+sd(trainingSet$NINQ)
+IQR(trainingSet$NINQ)
+```
+
+Most observations have zero or one recent credit inquiry (74.01%). While the values range from 0-17, you can tell most observations fall closer to the 0-1 range because of the mean of 1.16 and the average distance from the mean being 1.65
+I think the values found in this variable will correctly predict whether the applicant defaulted on a loan or paid the loan. I do not think it is one of the more important variables because of most responses being zero or one and it being obvious that those with a lot of recent credit inquiries are much more likely to default on a loan.
+
+
+
+-CLNO: Number of credit lines
+
+```{r}
+mean(trainingSet$CLNO)
+median(trainingSet$CLNO)
+max(trainingSet$CLNO)
+min(trainingSet$CLNO)
+max(trainingSet$CLNO) - min(trainingSet$CLNO)
+sd(trainingSet$CLNO)
+IQR(trainingSet$CLNO)
+```
+
+The average number of credit lines sits at 21.34, with values ranging from 0-71. The average distance from the mean is 9.95
+This variable can help predict the probability of a loan default because of the wide range of values with most observations having 20 or less credit lines.
+
+
+
+-DEBTINC: Debt-to-income ratio
+
+```{r}
+mean(trainingSet$DEBTINC)
+median(trainingSet$DEBTINC)
+max(trainingSet$DEBTINC)
+min(trainingSet$DEBTINC)
+max(trainingSet$DEBTINC) - min(trainingSet$DEBTINC)
+sd(trainingSet$DEBTINC)
+IQR(trainingSet$DEBTINC)
+```
+
+The average Debt-to-Income ratio is 33.82 with values ranging from 14.37 to 47.59. The average distance from the mean is 6.26
+This is one of the most important variables when predicting probability of a loan default because it is a big factor for qualifying for home loans and determining what type of mortgage one is eligible for. This variable should help predict the probability of a loan default because most observations above the median are much more likely to default on a loan.
+
+
+
+
+## Build 5 models to predict the probability of a loan default. Compare and select the best models.
+
+-The models I built to predict the probability of a loan default are Logistic Regression, Decision Trees, Bagging, Random Forest, and Boosting
+
+-Logistic Regression tells us the probability of having a specific value of the dependent variable (BAD). The outcome variable is always categorical (2 groups; Ex- Yes/No, 0/1), and you use 1 or more predictor variables (continuous or categorical). The summary statistics will give us an equation to calculate the outcome variable for each observation, the odds ratio (OR) which tells us the likelihood an event will occur given the outcome, and the p-value of each predictor variable which lets us know if the predictor variable is statistically significant or not.
+
+
+-Decision Trees splits the cases into subsets based on the values of the predictor variables. This method is good for numeric and categorical variables, which is good for this study because of both types of those variables being present. This method also requires a large training set, which we have in this data set with over 4,000 observations in our training data set. The output of this method will also give us the importance each predictor variable contributed to the model's decision-making criteria.
+
+
+-Bagging is a tree-based method which reduces variance and increases prediction accuracy by taking many training sets, building a separate model using each training set, and averaging the resulting predictions. For a qualitative response like this one, we record the predicted class by each tree and take a majority vote of the most common occurring class among the predictions. This method uses all predictor variables (12 in this data set). The Out-of-Bag Error Estimation (OOB) makes this method unique, it works by using (on average) 2/3 of the observations in each bagged tree, while the remaining 1/3 are the OOB observations. This allows all predictor variables to have an equal chance at contributing to making a prediction in each observation.
+
+
+-Random Forest is a tree-based method which provides an improvement over bagging because of a small tweak which decorrelates the trees. Each time a tree is split, a random sample of 'm' predictors are chosen as split candidates from the full set of 'p' predictors. A fresh sample of 'm' predictors is taken at each split, and to decide how many predictors will randomly be selected for each split, we take the square root of the number of predictor variables. This method is unique because if there is one strong predictor variable, it will not be used as the top split in most trees like it will in Bagging and Boosting.
+
+
+-Boosting is a tree-based method that is similar to Bagging but each tree is grown sequentially, meaning that each tree is grown using information from previously grown trees. The new decision tree is then added to the previous fitted model, and the residuals are updated. A new tree is fit on the residuals and the process continues until the optimal tree is found.
+
+
+
+***Method 1: Logistic Regression***
+
+
+```{r}
+logReg <- glm(BAD ~ LOAN + MORTDUE + VALUE + REASON + DEROG + DELINQ + CLAGE + NINQ + CLNO + DEBTINC, data = trainingSet, family = binomial)
+summary(logReg)
+exp(coef(logReg))
+hosTest <- hoslem.test(trainingSet$BAD, fitted(logReg), g = 10)
+hosTest
+```
+
+-Holding all other variables constant, individuals with 'Home Improvement' as their reason for getting a home equity loan are 23% more likely to default on a loan than individuals with 'Debt Consolidation' as their reason for getting a home equity loan.
+-Holding all other variables constant, individuals with a higher Debt-to-Income Ratio are 7.4% more likely to default on a loan than individuals with a lower Debt-to-Income Ratio.
+
+
+Confusion Matrix for Validation data set
+
+```{r}
+predictedProbs <- predict(logReg, validationSet, type = "response")
+validationSet <- validationSet %>% mutate(predictedClass = ifelse(predictedProbs > 0.5, 1, 0))
+table(validationSet$predictedClass, validationSet$BAD)
+```
+
+-Accuracy: (1161 + 92)/1489 = 0.842 = The Logistic Regression Model predicts the correct class of the BAD variable 84.2% of the time.
+-Misclassification Rate: (31 + 205)/ 1489 = 0.158 = The Logistic Regression Model incorrectly predicts the class of the BAD variable 15.8% of the time
+
+
+Gains table
+
+```{r}
+validationSet$BAD <- as.numeric(as.character(validationSet$BAD))
+gainTable <- gains(validationSet$BAD, predictedProbs)
+gainTable
+```
+
+-The top 10% based on predicted probability, are 3.49 times more likely to be identified as defaulting on a loan.
+
+
+Plots
+
+```{r}
+plot(c(0, gainTable$cume.pct.of.total * sum(validationSet$BAD)) ~ c(0, gainTable$cume.obs), xlab="# of cases", ylab="Cumulative", main="Cumulative Lift Chart", type="l")
+lines(c(0, sum(validationSet$BAD)) ~ c(0, dim(validationSet)[1]), col = "red", lty = 2)
+```
+
+```{r}
+barplot(gainTable$mean.resp/mean(validationSet$BAD), names.arg = gainTable$depth, xlab = "Percentile", ylab = "Lift", ylim = c(0,3), main = "Decile-Wise Lift Chart")
+```
+
+
+
+```{r}
+rocObject <- roc(validationSet$BAD, predictedProbs)
+plot(rocObject)
+```
+
+```{r}
+auc(rocObject)
+```
+
+-C statistic = 0.7889
+-Using this model, we are 78.89% accurate in discriminating between those who default on a loan and those who paid the loan.
+
+
+
+***Model 2: Decision Trees***
+
+
+Default Tree
+
+```{r}
+set.seed(1)
+defTree <- rpart(BAD ~ ., data = trainingSet, method = "class")
+summary(defTree)
+```
+
+```{r}
+prp(defTree, type = 1, extra = 1, under = TRUE)
+```
+
+
+Get the full tree
+
+```{r}
+set.seed(1)
+fullTree <- rpart(BAD ~ ., data = trainingSet, method = "class", cp = 0, minsplit = 9, minbucket = 3)
+printcp(fullTree)
+```
+
+-The Cross-validation error rate (xerror) starts going down as the number of splits increases because the tree becomes more complex. It begins to go back up after 11 splits because the tree is over fitted
+
+-For the pruned tree, the CP value is 0.00934230 because when adding the xerror xstd of the fitted complex tree you get 0.60987 + 0.024505 = 0.634375, and the only less complex tree with an xerror rate lower than that is the 5th tree with an xerror rate of 0.60314, and the CP value of that tree is 0.00934230
+
+
+```{r}
+prunedTree <- prune(fullTree, cp = 0.00934230)
+prp(prunedTree, type = 1, extra = 1, under = TRUE)
+```
+
+-Root Node in this tree is DELINQ (Number of delinquent credit lines)
+
+
+Performance metrics 
+
+```{r}
+validationSet$BAD <- as.factor(validationSet$BAD)
+predictedClass <- predict(prunedTree, validationSet, type = "class")
+confusionMatrix(predictedClass, validationSet$BAD, positive = "1")
+```
+
+-Misclassification Rate: (50 + 132)/1489 = 0.1222, The model incorrectly predicts the class of BAD 12.22% of the time.
+-Accuracy: (1142 + 165)/1489 = 0.8778, The model predicts the correct class of the BAD variable 87.78% of the time.
+
+
+Gain Table
+
+```{r}
+dtPredictedProb <- predict(prunedTree, validationSet, type = "prob")
+validationSet$BAD <- as.numeric(as.character(validationSet$BAD))
+dtGainTable <- gains(validationSet$BAD, dtPredictedProb[,2])
+dtGainTable
+```
+
+-The top 11% based on predicted probability, are 4.11 times more likely to identify an individual defaulting on a loan than a random individual.
+
+
+Plots
+
+```{r}
+plot(c(0, dtGainTable$cume.pct.of.total * sum(validationSet$BAD)) ~ c(0, dtGainTable$cume.obs), xlab ="# of cases", ylab ="Cumulative", main ="Cumulative Lift Chart", type="l")
+lines(c(0, sum(validationSet$BAD)) ~ c(0, dim(validationSet)[1]), col = "red", lty = 2)
+```
+
+```{r}
+barplot(dtGainTable$mean.resp/mean(validationSet$BAD), names.arg = dtGainTable$depth, xlab = "Percentile", ylab = "Lift", ylim = c(0,3), main = "Decile-Wise Lift Chart\n")
+```
+
+
+```{r}
+dtROC <- roc(validationSet$BAD, dtPredictedProb[,2])
+plot.roc(dtROC)
+```
+
+```{r}
+auc(dtROC)
+```
+
+-C Statistic = 0.8661, using this model we are 86.61% accurate in discriminating between those who defaulted on a loan and those who paid the loan.
+
+
+
+
+***Method 3: Bagging***
+
+-mtry is set to 12 so the function uses all 12 predictors when building a tree. Bagging uses all predictors in the data
+-Variable Importance Plot shows the importance of each variable when predicting the response variable, Debt-to-Income ratio is the most important predictor.
+
+
+```{r}
+set.seed(1)
+baggingTree <- randomForest(BAD ~ ., data = trainingSet, ntree = 100, mtry = 12, importance = T)
+varImpPlot(baggingTree, type = 1)
+```
+
+
+```{r}
+summary(baggingTree)
+```
+
+
+Confusion Matrix
+
+```{r}
+bagPredictedClass <- as.factor(predict(baggingTree, validationSet))
+validationSet$BAD <- as.factor(validationSet$BAD)
+confusionMatrix(bagPredictedClass, validationSet$BAD, positive = "1")
+```
+
+-Accuracy: (1142 + 213)/1489 = 0.91, The model correctly predicts the class of the BAD variable 91% of the time.
+-Misclassification Rate: (50 + 84)/1489 = 0.09, The model incorrectly predicts the class of the BAD variable 9% of the time
+
+
+Cumulative Lift Table
+
+```{r}
+bagPredictedProb <- predict(baggingTree, validationSet, type = "prob")
+head(bagPredictedProb)
+validationSet$BAD <- as.numeric(as.character(validationSet$BAD))
+bagGainTable <- gains(validationSet$BAD, bagPredictedProb[,2])
+bagGainTable
+```
+
+-The top 10% based on predicted probability, are 4.34 times more likely to identify individuals who defaulted on a loan than a randomly selected individual.
+
+
+
+Performance Based Charts
+
+```{r}
+plot(c(0, bagGainTable$cume.pct.of.total * sum(validationSet$BAD)) ~ c(0, bagGainTable$cume.obs), xlab="# of cases", ylab = "Cumulative", main = "Cumulative Lift Chart", type = "l")
+lines(c(0, sum(validationSet$BAD)) ~ c(0, dim(validationSet)[1]), col = "red", lty = 2)
+```
+
+```{r}
+par(mar=c(1,1,1,1))
+barplot(bagGainTable$mean.resp/mean(validationSet$BAD), names.arg = bagGainTable$depth, xlab = "Percentile", ylab = "Lift", ylim = c(0,3), main = "Decile-Wise Lift Chart")
+```
+
+
+
+```{r}
+rocBag <- roc(validationSet$BAD, bagPredictedProb[,2])
+par(mar=c(1,1,1,1))
+plot.roc(rocBag)
+```
+
+```{r}
+auc(rocBag)
+```
+
+-C Statistic = 0.9479, using the Bagging model we are 94.79% accurate in discriminating between individuals who defaulted on a loan and those who paid the loan.
+
+
+
+***Method 4: Random Forest***
+
+-mtry = 3, because in a Random Forest each split uses a random sample of 'm' predictors which are chosen as split candidates from the full set of 'p' predictors. We get this number by calculating the Square Root of the number of predictors (12), which gives us 3.4641 and is rounded down to 3
+-The Variable Importance Plot shows which predictors are most/least important in predicting the response variable. Debt-to-Income Ratio is the most important, while Reason for the home equity loan is the least important.
+
+```{r}
+set.seed(1)
+randForestTree <- randomForest(BAD ~ ., data = trainingSet, ntree = 100, mtry = 3, importance = T)
+varImpPlot(randForestTree, type = 1)
+```
+
+```{r}
+summary(randForestTree)
+```
+
+
+Confusion Matrix
+
+```{r}
+rfPredictedClass <- as.factor(predict(randForestTree, validationSet))
+validationSet$BAD <- as.factor(validationSet$BAD)
+confusionMatrix(rfPredictedClass, validationSet$BAD, positive = "1")
+```
+
+-Accuracy: (1157 + 215)/1489 = 0.9214, The model correctly predicts the class of the BAD variable 92.14% of the time.
+-Misclassification Rate: (35 + 82)/1489 = 0.0786, The model incorrectly predicts the class of the BAD variable 7.86% of the time.
+
+
+
+Cumulative Lift Table
+
+```{r}
+rfPredictedProb <- predict(randForestTree, validationSet, type = "prob")
+head(rfPredictedProb)
+validationSet$BAD <- as.numeric(as.character(validationSet$BAD))
+rfGainTable <- gains(validationSet$BAD, rfPredictedProb[,2])
+rfGainTable
+```
+
+-The top 10%, based on predicted probability, are 4.72 times more likely to identify individuals who defaulted on a loan than a randomly selected individual.
+
+
+
+Performance Based Charts
+
+```{r}
+plot(c(0, rfGainTable$cume.pct.of.total * sum(validationSet$BAD)) ~ c(0, rfGainTable$cume.obs), xlab = "# of cases", ylab = "Cumulative", main = "Cumulative Lift Chart", type = "l")
+lines(c(0, sum(validationSet$BAD)) ~ c(0, dim(validationSet)[1]), col = "red", lty = 2)
+```
+
+```{r}
+barplot(rfGainTable$mean.resp/mean(validationSet$BAD), names.arg = rfGainTable$depth, xlab = "Percentile", ylab = "Lift", ylim = c(0,3), main = "Decile-Wise Lift Chart")
+```
+
+```{r}
+rfROC <- roc(validationSet$BAD, rfPredictedProb[,2])
+plot.roc(rfROC)
+```
+
+```{r}
+auc(rfROC)
+```
+
+-C Statistic = 0.968, using the Random Forest model we are 96.8% accurate in discriminating between individuals who defaulted on a loan and those who paid the loan.
+
+
+
+
+***Method 5: Boosting***
+
+
+```{r}
+data <- data.frame(data)
+data$BAD <- as.factor(data$BAD)
+set.seed(1)
+myIndex <- createDataPartition(data$BAD, p = 0.75, list = FALSE)
+trainingSet <- data[myIndex,]
+validationSet <- data[-myIndex,]
+set.seed(1)
+boostedTree <- boosting(BAD ~ DEBTINC + CLNO + NINQ + CLAGE + DELINQ + DEROG + YOJ + JOB + REASON + VALUE + MORTDUE + LOAN, data = trainingSet, boos = T, mfinal = 100)
+summary(boostedTree)
+```
+
+
+Confusion Matrix
+
+```{r}
+boostPredict <- predict(boostedTree, validationSet)
+confusionMatrix(as.factor(boostPredict$class), validationSet$BAD, positive = "1")
+```
+
+-Accuracy: (1143 + 202)/1489 = 0.9033, the Boosting model predicts the correct class of the BAD variable 90.33% of the time.
+-Misclassification Rate: (49 + 95)/1489 = 0.0967, the Boosting model predicts the incorrect class of the BAD variable 9.67% of the time
+
+
+
+Cumulative Lift Table
+
+```{r}
+validationSet$BAD <- as.numeric(as.character(validationSet$BAD))
+boostGainTable <- gains(validationSet$BAD, rfPredictedProb[,2])
+boostGainTable
+```
+
+-The top 10% based on predicted probability, are 4.72 times more likely to be identified for defaulting on a loan than a randomly selected individual.
+
+
+
+Performance Based Charts
+
+```{r}
+plot(c(0, boostGainTable$cume.pct.of.total * sum(validationSet$BAD)) ~ c(0, boostGainTable$cume.obs), xlab = "# of cases", ylab = "Cumulative", main = "Cumulative Lift Chart", type = "l")
+lines(c(0, sum(validationSet$BAD)) ~ c(0, dim(validationSet)[1]), col = "red", lty = 2)
+```
+
+```{r}
+barplot(boostGainTable$mean.resp/mean(validationSet$BAD), names.arg = boostGainTable$depth, xlab = "Percentile", ylab = "Lift", ylim = c(0,3), main = "Decile-Wise Lift Chart")
+```
+
+```{r}
+boostROC <- roc(validationSet$BAD, rfPredictedProb[,2])
+plot.roc(boostROC)
+```
+
+```{r}
+auc(boostROC)
+```
+
+-C Statistic = 0.968, Using the Boosting model we are 96.8% accurate in discriminating between individuals with a defaulted loan and those who paid the loan.
+
+
+
+
+
+
+## Report on Findings
+
+For this study, we want to find the best fit model that predicts the probability of a loan default. To do this, we have a data set which reports characteristics and delinquency information for 5,960 home equity loans. A home equity loan is a loan where the obligor uses the equity of his or her home as the underlying collateral. The data set includes 13 variables, which include the outcome variable BAD(1 = applicant defaulted on loan or seriously delinquent, 0 = applicant paid loan) and 12 predictor variables. We use the findings on this data to build a model that can predict the probability of a loan default in the future based on the values of the predictor variables.
+
+In order to analyze the data, we researched the meanings of each variable to further understand the context of its value and which values correlate to a potential loan default or a loan being paid off by the applicant. After this, we ran a univariate analysis on each variable. For the numeric (continuous) variables we took the mean, median, maximum, minimum, range, standard deviation, and Inter-Quartile-Range of all the observations for that variable to see the variance of the values, its dispersion, and where most values lied for that variables. For categorical variables, or numeric variables with a small range (Ex- values range from 0-10), we ran a frequency table in order to see the number of responses for each value of that variable. For example, using the training data set and the variable with values 0-10, the frequency table tells us how many observations had the number zero, one, etc. This helps us know where most responses will be for that variable and how it correlates to predicting the probability of a loan default.
+
+For all five of the models we built, we created a confusion matrix to predict the values in the validation data set based on the model's findings in the training data set. This confusion matrix gives us the accuracy of the model which tells us the percentage of predictions that were correct, and the misclassification rate which tells us the percentage of predictions that were incorrect. After that we made some performance based charts, starting with the Receiver Operating Characteristic (ROC) curve which shows the false positive rate (1 - Specificity) on the X-axis and the true positive rate (Sensitivity) on the Y-axis. Ideally the curve climbs quickly towards the top left indicating the model correctly predicted the outcomes. Next is the Gain and Lift charts which is a measure of effectiveness of a classification model calculated as the ratio between the results obtained with and without the model. Finally we take the Area Under the ROC Curve (AUC), otherwise known as the C-Statistic. The C-Statistic is a measure of the quality of the classification model, and values closer to 1 indicate the model does a better job at classifying. The performance measures we used to choose our most optimal model was the misclassification rate (1 - Accuracy) and the C-Statistic (AUC).
+
+
+In conclusion, we decided that Random Forest was the best model for predicting the probability of a loan default. This model had a misclassification rate of 0.0786, meaning it incorrectly predicted just 7.86% of the 1,489 observations in our validation data set. The 2nd most accurate model was the Bagging model which had a misclassification rate of 0.09, meaning it incorrectly predicted just 9% of the 1,489 observations in the validation data set. The Random Forest model had a C-Statistic of 0.968, meaning this model is 96.8% accurate in discriminating between individuals who defaulted on a loan and those who paid the loan. No other model had a higher C-Statistic than Random Forest, but the Boosting model did have the same value of 0.968 for its C-Statistic. The Random Forest was the right choice because no model had better accuracy predicting the observations and no other models did a better job at distinguishing between the two outcomes.
+
+

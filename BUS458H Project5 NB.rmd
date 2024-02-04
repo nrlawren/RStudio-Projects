@@ -1,0 +1,144 @@
+---
+title: "Project 5: Naive Bayes - Census Data"
+author: "Nash Lawrence & Kevin Wlosinski"
+date: "2022-10-17"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+library(caret)
+library(klaR)
+library(gains)
+library(pROC)
+```
+
+## The Context
+
+An institute for public policy in Washington, D.C., hores a number of college interns every summer. This year, Sara Anderson, a third-year economics major from Massachusetts, is selected as one of the research interns. Her first assignment is to conduct data analysis to help congressional offices gain a better understanding of U.S. residents whose incomes are below the poverty level. To complete her assignment, Sara extracts a relevant data set maintained by the U.S. Census Bureau. The data set ha 9,980 observations and is stored in trhe Census_Data worksheet of the Census data file. Each observation contains an individual's marital status, sex, ethnicity, age groups, college level education, and poverty level.
+Married: Yes/No
+Female : Yes/No
+White: Yes/No
+Age: 1 [18,25), 2 [25, 35), 3 [35, 45), 4 [45, 55), 5 55+
+Edu: Yes/No
+Poverty: 1/0
+
+## Read the data
+
+```{r cars}
+census_data <- read_csv("C:/Users/stewi/BUS 458H/Census_Data.csv")
+head(census_data)
+```
+
+## Convert the binary response variable to a factor. Split the data into a training and a validation data set.
+
+```{r pressure, echo=FALSE}
+census_data$Poverty <- as.factor(census_data$Poverty)
+set.seed(1)
+myIndex <- createDataPartition(census_data$Poverty, p=0.6, list=FALSE)
+trainSet <- census_data[myIndex,]
+validationSet <- census_data[-myIndex,]
+```
+
+## Specify a K-Fold
+
+```{r}
+myCtrl <- trainControl(method = "cv", number=10)
+```
+
+## Run the Naive Bayes
+
+```{r}
+set.seed(1)
+nb_fit <- train(Poverty~., data=trainSet, method="nb", trControl=myCtrl)
+nb_fit
+```
+
+## Create the confusion matrix on the validation data set
+
+```{r}
+nb_Class <- predict(nb_fit, newdata=validationSet)
+confusionMatrix(nb_Class, validationSet$Poverty, positive='1')
+```
+
+#Interpretation of Confusion Matrix
+-Accuracy: (648 + 2381)/(648 + 734 + 228 + 2381) = 0.759 = 76%
+-The output shows the Naive-Bayes classifier we built can predict whether a person is in poverty or not, with an accuracy of approximately 76%
+-Sensitivity: 2381/(734 + 2381) = 0.7644 = 76% of individuals in poverty are predicted to be in poverty
+-Specificity: 648/(648 + 228) = 0.7397 = 74% of individuals not living in poverty are predicted to not be living in poverty
+-Misclassification Rate: (228 + 734)/(648 + 734 + 228 + 2381) = 0.241 = 24% of individuals are predicted to be living in poverty when they are not, or predicted to not be in poverty when they are.
+-No Information Rate: (2381 + 734)/ 3991 = 0.7805 = 78%
+
+-The model is best at predicting which individuals live in poverty
+
+
+## What if we want a cut-off other than 0.5?
+
+```{r}
+nb_Class_prob <- predict(nb_fit, newdata=validationSet, type='prob')
+confusionMatrix(as.factor(ifelse(nb_Class_prob[,2]>0.75,'1','0')), validationSet$Poverty, positive='1')
+```
+
+#Interpretations
+-Confusion Matrix based on the probability of one living in poverty being greater than 75%
+
+-Accuracy: (764 + 2160)/3991 = 0.7326. This model is less accurate than the original on the validation set, with an accuracy statistic of 73% compared to 76%
+-Sensitivity: 2160/(2160 + 955) = 0.6934 = 69% = 69% of individuals in poverty are predicted to be in poverty, which is less accurate than the original validation set, with a Sensitivity of 76%
+-Specificity: 764/(764 + 112) = 0.8721 = 87% = 87% of individuals not living in poverty are predicted to not be living in poverty, which is more accurate than the original validation set, with a Specificity of 74%
+-Misclassification Rate: (112 + 955)/3991 = 0.267 = 27% of individuals are predicted to be living in poverty when they are not, or predicted to not be in poverty when they are. This is less accurate than the original validation set, which had a Misclassification Rate of 24%
+-No Information Rate: (2160 + 955)/3991 = 0.7805 = 78%, which is the same as the original validation set.
+
+-The model is best at predicting which individuals do not live in poverty
+
+## Creating the lift and ROC charts
+
+```{r}
+nb_Class_prob <- predict(nb_fit, newdata=validationSet, type='prob')
+validationSet$Poverty <- as.numeric(as.character(validationSet$Poverty))
+gains_table <- gains(validationSet$Poverty, nb_Class_prob[,2])
+gains_table
+```
+#Interpretation of Lift at 13%
+-The top 13%, based on predicted probability, are 1.28 times more likely to be identified as individuals living in poverty than a randomly selected individual.
+
+
+## Create the cumulative lift chart.
+
+```{r}
+plot(c(0,gains_table$cume.pct.of.total*sum(validationSet$Poverty))~
+       c(0,gains_table$cume.obs), xlab="# of cases",
+     ylab="Cumulative",main="Cumulative Lift Chart",type="l")
+lines(c(0,sum(validationSet$Poverty))~c(0,dim(validationSet)[1]),col="red",lty=2)
+```
+
+## Create the decile-wise plot
+
+```{r}
+barplot(gains_table$mean.resp/mean(validationSet$Poverty),
+        names.arg=gains_table$depth, xlab="Percentile", ylab="Lift",
+        ylim=c(0,3), main="Decile-Wise Lift Chart")
+```
+
+## Plot the ROC curve and calculate AUC.
+
+```{r}
+roc_object<-roc(validationSet$Poverty,nb_Class_prob[,2])
+plot.roc(roc_object)
+auc(roc_object)
+```
+#Interpretation of C-Statistic
+-Using this model, we are 84% accurate in discriminating between individuals in poverty and individuals not in poverty.
+
+
+# Score the new data file
+
+```{r}
+myScoreData <- read_csv("C:/Users/stewi/BUS 458H/Census_Data.csv")
+head(myScoreData)
+nb_Score<-predict(nb_fit, newdata = myScoreData)
+myScoreData <- data.frame(myScoreData, nb_Score)
+head(myScoreData)
+```
+

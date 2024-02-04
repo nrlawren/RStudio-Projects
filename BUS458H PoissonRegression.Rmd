@@ -1,0 +1,111 @@
+---
+title: "Poisson Regression"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(MASS)
+```
+
+
+## Read in data set
+
+```{r}
+url <- "C:/Users/stewi/BUS 458H/Falls.csv"
+Fall <- read_csv(url)
+head(Fall)
+```
+
+
+```{r}
+lm(Num_Falls ~ Intervention * Gender, data = Fall)
+```
+
+
+## Run a Linear Regression Model
+
+```{r}
+fallOls <- lm(Num_Falls ~ Intervention + Gender + Balance + Strength, data = Fall)
+summary(fallOls)
+```
+
+## Get the Residual plots
+
+```{r}
+par(mfrow = c(2, 2))
+plot(fallOls)
+```
+
+
+## Run a log transformed response linear regression model
+
+```{r}
+fallLog <- Fall %>% mutate(logFall = log(Num_Falls + 0.1))
+fallOls <- lm(logFall ~ Intervention + Gender + Balance + Strength, data = fallLog)
+summary(fallOls)
+```
+
+
+## Get the Residual plots
+
+```{r}
+par(mfrow = c(2, 2))
+plot(fallOls)
+```
+
+
+## Run a Poisson Regression Model
+
+```{r}
+fallPoisson <- glm(Num_Falls ~ Intervention + Gender + Balance + Strength, data = Fall, family = "poisson")
+summary(fallPoisson)
+```
+
+## Get the Residual plots
+
+```{r}
+par(mfrow = c(2, 2))
+plot(fallPoisson)
+```
+
+
+## Run a Negative Binomial Regression Model
+
+```{r}
+fallNB <- glm.nb(Num_Falls ~ Intervention + Gender + Balance + Strength, data = Fall)
+summary(fallNB)
+```
+
+***Interpretations***
+Model: log(falls) = 0.4895 - 1.0694Intervention - 0.0466Gender + 0.0095Balance + 0.0086Strength
+
+Model for no Intervention: log(falls) = 0.4895 - 0.0466Gender + 0.0095Balance + 0.0086Strength
+
+Model for Intervention: log(falls) = 0.4895 - 1.0694 - 0.0466Gender + 0.0095Balance + 0.0086Strength
+
+Difference between no Intervention and Intervention models: log(falls)Int - log(falls)noInt = -1.0694
+
+Rules of logs: log(fallsInt / fallsNoInt) = -1.0649 -> fallsInt / fallsNoInt = e^-1.0649 = 0.3432
+
+Interpretation: Holding Gender, Balance index, and Strength index constant; Those who got the treatment have approximately 65% lower "odds" of falling when compared to individuals who did not get the treatment. If the average number of falls for someone who did not get treatment is 100, the average number of falls for someone who did not get treatment is approximately 34.
+
+
+
+## Get the Residual plots
+
+```{r}
+par(mfrow = c(2, 2))
+plot(fallNB)
+```
+
+
+
+
+
+
+
+
+
+

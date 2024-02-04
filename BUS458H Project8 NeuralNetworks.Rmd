@@ -1,0 +1,95 @@
+---
+title: "Project 8: Neural Networks"
+author: "Nash Lawrence & Kevin Wlosinski"
+date: "12/05/2022"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+library(ResourceSelection)
+library(ggmosaic)
+library(ggplot2)
+library(caret)
+library(gains)
+library(rpart)
+library(rpart.plot)
+library(pROC)
+library(tidyverse)
+library(formatR)
+library(neuralnet)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+options(tibble.width = Inf) # displays all columns.
+options(tibble.print_max = Inf) # to show all the rows.
+```
+
+
+## Read the data set
+
+```{r}
+idTheft <- read_csv("C:/Users/stewi/BUS 458H/StolenRecords.csv")
+head(idTheft)
+```
+
+## Split the data set into a training and a validation data set
+
+```{r}
+# First change the response variable to a nominal.
+idTheft$IDTheftVictim <- as.factor(idTheft$IDTheftVictim)
+set.seed(1)
+# Minimize the size of this data set for the sake of this demo.
+# Let's randomly select 10000 observations only.
+myIndex <- createDataPartition(idTheft$IDTheftVictim, p = 0.01, list = FALSE)
+new_data <- idTheft[myIndex,]
+# Now do a 70-30 split
+myIndex <- createDataPartition(new_data$IDTheftVictim, p = 0.70, list = FALSE)
+trainSet <- new_data[myIndex,]
+validationSet <- new_data[-myIndex,]
+```
+
+
+## Build the neural network model
+
+```{r}
+# One hidden layer with 3 nodes
+NN_Model <- neuralnet(IDTheftVictim ~ DirectDeposit + ATMCard	+ DebitCard + PreauthorizedDebts + AutomatedPhoneSystem +  ComputerBanking + InPersonBanking + ByMailBanking	+ PhoneBanking + ChgPassReg + UseStrongPass + MonitorBankStmt + MonitorCCStmt + MonitorCredreport, data = trainSet, hidden = 3, act.fct = "tanh", linear.output = FALSE)
+plot(NN_Model)
+```
+
+
+## Predict the validation data set and create the confusion matrix
+
+```{r}
+Predict <- compute(NN_Model, validationSet)
+prob <- Predict$net.result
+pred <- ifelse(prob > 0.5, 1, 0)
+# The rows are the predicted, and the columns are the observed
+table(pred[,1], validationSet$IDTheftVictim)
+```
+
+Accuracy: (123 + 398)/2999 = 0.174 = 17.4%
+Misclassification Rate: (2298 + 180)/2999 = 0.826 = 82.6%
+
+
+## Create the gains table
+
+```{r}
+validationSet$IDTheftVictim <- as.numeric(as.character(validationSet$IDTheftVictim))
+gains_table <- gains(validationSet$IDTheftVictim, Predict$net.result[,1])
+gains_table
+```
+
+## Create the plots
+
+```{r}
+roc_object <- roc(validationSet$IDTheftVictim, Predict$net.result[,1])
+plot.roc(roc_object)
+```
+
+
+```{r}
+auc(roc_object)
+```
+
+C-Statistic = 79.6%, We are 79.6% accurate using this model to predict victims of ID Theft.

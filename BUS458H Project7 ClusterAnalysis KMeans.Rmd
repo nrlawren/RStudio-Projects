@@ -1,0 +1,158 @@
+---
+title: "Project 7: Cluster Analysis of the Iris Data Set"
+author: "Nash Lawrence & Kevin Wlosinski"
+date: '2022-11-16'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(cluster)
+library(reshape2)
+```
+
+## The context
+The Iris flower data set was introduced by the British statistician and biologist Ronald Fisher in his 1936 paper "The use of multiple measurements in taxonomic problems." This is perhaps the best known database to be found in the pattern recognition literature. The Iris data set gives the measurements in centimeters of the variables sepal length and width and petal length and width, respectively, for 50 flowers from each of 3 species of iris. The species are Iris Setosa, Versicolor, and Virginica.
+
+## Read the data
+
+```{r}
+iris_data <- read_csv("C:/Users/stewi/BUS 458H/iris.csv")
+head(iris_data)
+```
+
+## Look at a few basic plots
+
+```{r}
+# Sepal-Length vs. Sepal-Width
+ggplot(iris_data)+
+  geom_point(aes(x = Sepal.Length, y = Sepal.Width), stroke = 2)+
+  facet_wrap(~ Species) + 
+  labs(x = 'Sepal Length', y = 'Sepal Width')+
+  theme_bw()
+
+# Petal-Length vs. Petal-Width
+ggplot(iris_data)+
+  geom_point(aes(x = Petal.Length, y = Petal.Width), stroke = 2)+
+  facet_wrap(~ Species) + 
+  labs(x = 'Petal Length', y = 'Petal Width')+
+  theme_bw()
+
+# Sepal-Length vs. Petal-Length
+ggplot(iris_data)+
+  geom_point(aes(x = Sepal.Length, y = Petal.Length), stroke = 2)+
+  facet_wrap(~ Species) + 
+  labs(x = 'Sepal Length', y = 'Petal Length')+
+  theme_bw()
+
+# Sepal-Width vs. Petal-Width
+ggplot(iris_data)+
+  geom_point(aes(x = Sepal.Width, y = Petal.Width), stroke = 2)+
+  facet_wrap(~ Species) + 
+  labs(x = 'Sepal Width', y = 'Petal Width')+
+  theme_bw()
+```
+
+## A few more plots
+
+```{r}
+ggplot(iris_data)+
+ geom_boxplot(aes(x = Species, y = Sepal.Length, fill = Species))+
+ theme_bw()
+
+ggplot(iris_data)+
+ geom_boxplot(aes(x = Species, y = Sepal.Width, fill = Species))+
+ theme_bw()
+
+ggplot(iris_data)+
+ geom_boxplot(aes(x = Species, y = Petal.Length, fill = Species))+
+ theme_bw()
+
+ggplot(iris_data)+
+ geom_boxplot(aes(x = Species, y = Petal.Width, fill = Species))+
+ theme_bw()
+```
+
+## Find the optimal number of clusters (using the ELBOW method)
+
+```{r}
+set.seed(123)
+wcss <- vector()
+
+for (i in 1:10) wcss[i] <- sum(kmeans(iris_data[, -5], i)$withinss)
+
+plot(1:10, wcss, type = 'b', main = paste('The Elbow Method'), xlab = 'Number of Clusters', ylab = 'WCSS')
+```
+
+Determine optimal number of clusters by when the line starts to flatten out. Our number of clusters based on this graph is 3.
+
+WCSS = Within-Clusters Sums of Squares
+
+
+
+## Run the K-Means
+
+***centers = 3 means there are 3 clusters; -5 means to exclude that certain column***
+
+```{r}
+set.seed(123)
+km <- kmeans( x = iris_data[, -5] , centers = 3)
+yclus <- km$cluster
+table(yclus)
+
+# Create the cluster plot
+clusplot(iris_data[, -5], yclus, lines = 0, shade = TRUE, color = TRUE, labels = 0, plotchar = FALSE, span = TRUE, main = paste('Clusters of Iris Flowers'))
+```
+
+Also considered a Principal Component plot
+Two Principal Components take care of 95.81% of the variation.
+
+## Compare the clusters
+
+```{r}
+iris_data$cluster.kmean <- yclus
+cm <- table(iris_data$Species, iris_data$cluster.kmean)
+cm
+```
+
+Misclassification Rate = 16 / 150 = 0.10667 = 10.667%
+
+
+## Look at Scatter plots
+
+```{r}
+iris_data$cluster.kmean <- as.factor(iris_data$cluster.kmean)
+
+# Sepal-Length vs. Sepal-Width (Species)
+ggplot(iris_data)+
+  geom_point(aes(x = Sepal.Length, y = Sepal.Width, 
+                 color = Species) , size = 10)+ 
+  labs(x = 'Sepal Length', y = 'Sepal Width')+
+  ggtitle("Species")+
+  theme_bw()
+
+# Sepal-Length vs. Sepal-Width (kmeans cluster)
+ggplot(iris_data)+
+  geom_point(aes(x = Sepal.Length, y = Sepal.Width, 
+                 color = cluster.kmean) , size = 10)+ 
+  labs(x = 'Sepal Length', y = 'Sepal Width')+
+  ggtitle("kmeans Cluster")+
+  theme_bw()
+
+# Petal-Length vs. Petal-Width (Species)
+ggplot(iris_data)+
+  geom_point(aes(x = Petal.Length, y = Petal.Width, 
+                 color = Species) , size = 10)+ 
+  labs(x = 'Petal Length', y = 'Petal Width')+
+  ggtitle("Species")+
+  theme_bw()
+
+# Petal-Length vs. Petal-Width (kmeans cluster)
+ggplot(iris_data)+
+  geom_point(aes(x = Petal.Length, y = Petal.Width, 
+                 color = cluster.kmean) , size = 10)+ 
+  labs(x = 'Petal Length', y = 'Petal Width')+
+  ggtitle("kmeans Cluster")+
+  theme_bw()
+```

@@ -1,0 +1,319 @@
+---
+title: "Project 3"
+author: "Nash Lawrence & Kevin Wlosinski"
+date: "10/17/2022"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+library(ResourceSelection)
+library(ggmosaic)
+library(ggplot2)
+library(caret)
+library(gains)
+library(rpart)
+library(rpart.plot)
+library(pROC)
+library(tidyverse)
+library(formatR)
+library(MASS)
+library(boot)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+options(tibble.width = Inf) # displays all columns.
+options(tibble.print_max = Inf) # to show all the rows.
+```
+
+
+### Read the data set
+
+
+```{r}
+idTheft <- read_csv("C:/Users/stewi/BUS 458H/StolenRecords.csv")
+head(idTheft)
+```
+
+
+### Split the data set into a training and a validation data set
+
+```{r}
+# First change the response variable to a nominal.
+idTheft$IDTheftVictim <- as.factor(idTheft$IDTheftVictim)
+set.seed(1)
+myIndex <- createDataPartition(idTheft$IDTheftVictim, p=0.7, list=FALSE)
+trainSet <- idTheft[myIndex,]
+validationSet <- idTheft[-myIndex,]
+```
+
+
+### Build a couple of mosaic plots for illustration
+
+```{r}
+# Effect of using strong passwords
+
+z <- prop.table(table(trainSet$UseStrongPass, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("Not a Strong Passwd","Strong Passwd")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(UseStrongPass), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of direct deposit
+z <- prop.table(table(trainSet$DirectDeposit, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No Direct Deposit","Direct Deposit")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(DirectDeposit), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of ATM card
+z <- prop.table(table(trainSet$ATMCard, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No ATM Card","ATM Card")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(ATMCard), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of Debit Card
+z <- prop.table(table(trainSet$DebitCard, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No Debit Card","Debit Card")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(DebitCard), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of preauthorized debts
+z <- prop.table(table(trainSet$PreauthorizedDebts, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No Preauthorized debts","Preauthorized debts")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(PreauthorizedDebts), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of automated phone systems
+z <- prop.table(table(trainSet$AutomatedPhoneSystem, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No Automated Phone System","Automated Phone System")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(AutomatedPhoneSystem), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of Computer Banking
+z <- prop.table(table(trainSet$ComputerBanking, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No Computer Banking","Computer Banking")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(ComputerBanking), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of in-person Banking
+z <- prop.table(table(trainSet$InPersonBanking, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No in-person Banking","In-Person Banking")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(InPersonBanking), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of by Mail Banking
+z <- prop.table(table(trainSet$ByMailBanking, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No by-mail Banking","By-mail Banking")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(ByMailBanking), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of Phone Banking
+z <- prop.table(table(trainSet$PhoneBanking, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No Phone Banking","Phone Banking")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(PhoneBanking), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of Changing Passwords Regularly
+z <- prop.table(table(trainSet$ChgPassReg, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No Freq Pass Change","Frequent Password Change")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(ChgPassReg), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of Monitoring Bank Statements Regularly
+z <- prop.table(table(trainSet$MonitorBankStmt, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No Freq Monitor Bank","Freq Monitors Bank")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(MonitorBankStmt), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of Monitoring Credit Card Statements
+z <- prop.table(table(trainSet$MonitorCCStmt, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No Freq Monitor CC","Freq Monitors CC")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(MonitorCCStmt), fill=IDTheftVictim)) +
+  theme_mosaic()
+
+# Effect of Monitoring Credit Card Reports Regularly
+z <- prop.table(table(trainSet$MonitorCredreport, trainSet$IDTheftVictim), margin=1) * 100
+    rownames( z ) <- c("No Freq Monitor CR","Freq Monitors CR")
+    colnames( z) <- c( "Not ID Theft","ID Theft")
+    print( z)
+ggplot(data = trainSet) +
+  geom_mosaic(aes(x = product(MonitorCredreport), fill=IDTheftVictim)) +
+  theme_mosaic()
+```
+
+### Interpretation of the mosaic plots
+1. Customers who do not use strong passwords are more likely to be victims of id theft than customers who use strong passwords.
+2. Customers who use direct deposit are more likely to be victims of id theft than customers who do not use direct deposit.
+3. Customers who use an ATM card are more likely to be victims of id theft than customers who do not use an ATM card.
+4. Customers who use a debit card are more likely to be victims of id theft than customers who do not use a debit card.
+5. Customers who use pre-authorized debts are more likely to be victims of id theft than customers who do not use pre-authorized debts.
+6. Customers who use the automated phone system are slightly more likely to be victims of id theft than customers who do not use the automated phone system.
+7. Customers who use computer banking are more likely to be victims of id theft than customers who do not use computer banking.
+8. Customers who do not use in-person banking are more likely to be victims of id theft than customers who do use in-person banking.
+9. Customers who do not use by-mail banking are more likely to be victims of id theft than customers who do use by-mail banking.
+10. Customers who do not use phone banking are more likely to be victims of id theft than customers who do use phone banking.
+11. Customers who do not change their password regularly are more likely to be victims of id theft than customers who do change their password regularly.
+12. Customers who do not monitor their bank statement are more likely to be victims of id theft than customers who do monitor their bank statement.
+13. Customers who do not monitor their credit card statement are more likely to be victims of id theft than customers who do monitor their credit card statement.
+14. Customers who do not monitor their credit report are more likely to be victims of id theft than customers who do monitor their credit report.
+
+
+
+### Build the logistic regression model.
+
+```{r}
+LR_Model<-glm(IDTheftVictim ~ DirectDeposit + ATMCard	+ DebitCard + PreauthorizedDebts + AutomatedPhoneSystem + ComputerBanking + InPersonBanking + ByMailBanking	+ PhoneBanking + ChgPassReg + UseStrongPass + MonitorBankStmt	+ MonitorCCStmt + MonitorCredreport, data=trainSet, family=binomial)
+summary(LR_Model)
+exp(coef(LR_Model))
+hl <- hoslem.test(trainSet$IDTheftVictim, fitted(LR_Model), g=10)
+hl
+```
+### Interpretation of the odds ratios
+1. Holding all other variables constant, customers who use strong passwords are 67% less likely to be victims of id theft than customers who do not use strong passwords.
+2. Holding all other variables constant, customers who use direct deposit are 73% more likely to be victims of id theft than customers who do not use direct deposit.
+3. Holding all other variables constant, customers who use an ATM card are 114% more likely to be victims of id theft than customers who do not use an ATM card.
+4. Holding all other variables constant, customers who use a debit card are 35% more likely to be victims of id theft than customers who do not use a debit card.
+5. Holding all other variables constant, customers who use preauthorized debts are 187% more likely to be victims of id theft than customers who do not use preauthorized debts.
+6. Holding all other variables constant, customers who use the automated phone system are 5% more likely to be victims of id theft than customers who do not use the automated phone system.
+7. Holding all other variables constant, customers who use computer banking are 330% more likely to be victims of id theft than customers who do not use computer banking. 
+8. Holding all other variables constant, customers who use in-person banking are 40% less likely to be victims of id theft than customers who do not use in-person banking.
+9. Holding all other variables constant, customers who use by-mail banking are 18% less likely to be victims of id theft than customers who do not use by-mail banking.
+10. Holding all other variables constant, customers who use phone banking are 25% less likely to be victims of id thefft than customers who do not use phone banking.
+11. Holding all other variables constant, customers who change their password regularly are 70% less likely to be victims of id theft than customers who do not change their password regularly.
+12. Holding all other variables constant, customers who monitor their bank statement are 29% less likely to be victims of id theft than customers who do not monitor their bank statement.
+13. Holding all other variables constant, customers who monitor their credit card statement are 46% less likely to be victims of id theft than customers who do not monitor their credit card statement.
+14. Holding all other variables constant, customers who monitor their credit report are 54% less likely to be victims of id theft than customers who do not monitor their credit report.
+
+
+### Predict the validation data set
+
+```{r}
+predicted_prob <- predict(LR_Model, validationSet, type="response")
+
+# Let's get the confusion matrix for the validation data set
+validationSet<- validationSet %>% mutate(predicted_class = ifelse(predicted_prob > 0.5, 1, 0))
+table(validationSet$predicted_class, validationSet$IDTheftVictim)
+
+# Let's get the confusion matrix for the training data set
+predicted_prob1 <- predict(LR_Model, trainSet, type="response")
+trainSet <- trainSet %>% mutate(predicted_class = ifelse(predicted_prob1 > 0.5, 1, 0))
+table(trainSet$predicted_class, trainSet$IDTheftVictim)
+# Note: Rows are the predicted classes while the columns are the observed classes
+```
+
+### Confusion Matrix Interpretation
+Sensitivity = 18322 / (39497 + 18322) = .3169 = 32% of individuals who are victims of id theft are also predicted to be victims of id theft
+Specificity = 231863 / (231863 + 39497) = .8544 = 85% of individuals who are not victims of id theft are also predicted to not be victims of id theft
+Misclassification Rate = (10318 + 39497) / (300000) = .16605 = 17% of individuals are incorrectly predicted to be victims or non-victims, when they truly belong to the opposite category.
+
+The model is good at predicting at non-victims.
+
+
+### Create the gains table
+
+```{r}
+validationSet$IDTheftVictim<-as.numeric(as.character(validationSet$IDTheftVictim))
+gains_table<-gains(validationSet$IDTheftVictim, predicted_prob)
+gains_table
+```
+
+### Interpretation of Lift at 10%
+The top 10%, based on predicted probability, are 3.28 times more likely to be identified as victims of id theft than a randomly selected individual.
+
+
+### Create the plots
+
+```{r}
+plot(c(0,gains_table$cume.pct.of.total*sum(validationSet$IDTheftVictim))~
+       c(0,gains_table$cume.obs), xlab="# of cases",
+     ylab="Cumulative",main="Cumulative Lift Chart",type="l")
+lines(c(0,sum(validationSet$IDTheftVictim))~c(0,dim(validationSet)[1]),col="red",lty=2)
+barplot(gains_table$mean.resp/mean(validationSet$IDTheftVictim),
+        names.arg=gains_table$depth, xlab="Percentile", ylab="Lift",
+        ylim=c(0,3), main="Decile-Wise Lift Chart")
+roc_object<-roc(validationSet$IDTheftVictim,predicted_prob)
+plot.roc(roc_object)
+auc(roc_object)
+```
+
+### Interpretation of C-statistic
+By using this model, we are 82% accurate in discriminating between victims and non-victims of id theft.
+
+
+## Stepwise Selection - Start with full model
+
+```{r}
+step.model <- LR_Model %>% stepAIC(trace = FALSE)
+summary(step.model)
+```
+
+## Backward Selection - Start with full model
+
+```{r}
+back.model <- LR_Model %>% stepAIC(direction = "backward", trace = FALSE)
+summary(back.model)
+```
+
+## Forward Selection - Software does its job. It starts with the intercept only model and then builds the final model.
+
+```{r}
+forward.model <- LR_Model %>% stepAIC(direction = "forward", trace = FALSE)
+summary(back.model)
+```
+
+## K-Fold Logistic Regression Model
+
+```{r}
+fitcontrol1 <- trainControl(method="cv", number = 5, savePredictions = T)
+mod_fitcv <- train(IDTheftVictim~DirectDeposit+ATMCard	+DebitCard+PreauthorizedDebts+AutomatedPhoneSystem	+ComputerBanking+InPersonBanking+ByMailBanking	+PhoneBanking+ChgPassReg+UseStrongPass+MonitorBankStmt	+MonitorCCStmt+MonitorCredreport
+, data=idTheft, method = "glm", family="binomial", trControl = fitcontrol1)
+summary(mod_fitcv)
+```
+
+## Another K-Fold Code
+
+```{r}
+credit_glm1<- glm(IDTheftVictim~DirectDeposit+ATMCard	+DebitCard+PreauthorizedDebts+AutomatedPhoneSystem	+ComputerBanking+InPersonBanking+ByMailBanking	+PhoneBanking+ChgPassReg+UseStrongPass+MonitorBankStmt	+MonitorCCStmt+MonitorCredreport, family=binomial, data=idTheft);  
+cv_result  <- cv.glm(data=idTheft, glmfit=credit_glm1, K=10) 
+cv_result$delta[1]
+```
+
+
+

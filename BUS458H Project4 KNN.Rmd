@@ -1,0 +1,157 @@
+---
+title: "KNN Models - Gym Data Demo (Project 4)"
+author: "Nash Lawrence & Kevin Wlosinski"
+date: "2022-10-14"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(gains)
+library(pROC)
+library(caret)
+```
+
+
+## Read the Gym data set
+
+```{r}
+gym <- read_csv("C:/Users/stewi/BUS 458H/Gym_Data.csv")
+head(gym)
+```
+
+## Scale the data set
+
+We use the scale function to standardize the Age,Income, and Hours variables. We store the standardized values in a new data frame called gym1. We then append the original Enroll variable back to the new data set gym1. We also use the as.factor function to convert the target variable (Enroll) into a categorical data type.
+
+```{r}
+gym1 <- scale(gym[2:4])
+gym1 <- data.frame(gym1, gym$Enroll)
+colnames(gym1)[4] <- 'Enroll'
+gym1$Enroll <- as.factor(gym1$Enroll)
+head(gym1)
+```
+
+
+## Create a training and validation data set
+
+To partition the data into 60% and 40% validation sets,
+we use the createDataPartition function and specify Enroll as the target variable. To ensure consistency, we use the set.seed function to set the random seed to 1.
+
+***MyIndex creates a column of random numbers between 1-1000. About 600 will be in MyIndex because of the 60/40 split. These values represents the random rows that go into the training data set***
+***trainSet is getting the randomly selected rows from the original (re scaled) data set to create the training data set, while validationSet creates the validation data set, the minus represents everything NOT in this list. The comma tells R to bring in all the columns***
+
+```{r}
+set.seed(1)
+myIndex <- createDataPartition(gym1$Enroll, p=0.6,list=FALSE)
+trainSet <- gym1[myIndex,]
+validationSet <- gym1[-myIndex,]
+```
+
+
+## Specify a 10-fold CV
+
+We use the trainControl function to implement a 10-fold
+cross-validation by setting the option method equal to "cv" and the option number equal to 10.
+
+We use the expand.grid function to specify possible k
+values from 1 to 10 and store the results in an object called myGrid. The optimal k value is determined based on accuracy. The possible range of k values may vary; you may experiment with a different range by changing the numbers in the statement.
+
+***This is a 10-fold, which separates the 600 observations into 10 groups of 60 random observations and runs a KNN 10 times which calculates the average performance across all 10 runs***
+***k calculates the number of nearest neighbors to figure out the optimal number of neighbors***
+
+```{r}
+myCtrl <- trainControl(method = "cv", number=10)
+myGrid <- expand.grid(k=c(1:10))
+```
+
+
+## The KNN
+
+To implement the KNN method with the training data set
+with option values specified above, we use the train function and store the results in an object called KNN_fit. To ensure consistency of the cross-validation results, we again use the set.seed function to fix a random seed.
+
+***The Accuracy statistic (go to 10/3 lecture)***
+***Kappa is a performance measure***
+
+```{r}
+set.seed(1)
+KNN_fit <- train(y=trainSet$Enroll, x=trainSet[,-4], method="knn", metric="Accuracy", trControl=myCtrl,
+                 
+                 tuneGrid = myGrid) 
+KNN_fit
+```
+
+## Use the optimal KNN to predict the validation data set
+
+***No Information Rate is predicting using the dominant class (0). (215 + 23)/all values(399) = 0.5965***
+
+```{r}
+KNN_Class <- predict(KNN_fit, newdata=validationSet)
+confusionMatrix(KNN_Class, validationSet$Enroll, positive='1')
+```
+
+## Calculate the predicted probabilities
+
+```{r}
+KNN_Class_prob <- predict(KNN_fit, newdata=validationSet, type='prob')
+KNN_Class_prob
+```
+
+## Using a different probability cut-off to calculate the confusion matrix
+```{r}
+confusionMatrix(as.factor(ifelse(KNN_Class_prob[,2]>0.25,'1','0')), validationSet$Enroll, positive='1')
+```
+
+## Calculate the gains table and lift charts
+
+```{r}
+validationSet$Enroll <-as.numeric(as.character(validationSet$Enroll))
+gains_table <- gains(validationSet$Enroll, KNN_Class_prob[,2])
+gains_table
+```
+
+```{r}
+plot(c(0,gains_table$cume.pct.of.total*sum(validationSet$Enroll))~ c(0,gains_table$cume.obs), xlab="# of cases", ylab="Cumulative",main="Cumulative Lift Chart", type="l")
+
+lines(c(0,sum(validationSet$Enroll))~c(0,dim(validationSet)[1]),col="red",lty=2)
+```
+
+
+```{r}
+barplot(gains_table$mean.resp/mean(validationSet$Enroll), names.arg=gains_table$depth, xlab="Percentile", ylab="Lift", ylim=c(0,3), main="Decile-Wise Lift Chart")
+```
+
+
+
+## The ROC Curve
+
+```{r}
+roc_object<-roc(validationSet$Enroll,KNN_Class_prob[,2])
+plot.roc(roc_object)
+auc(roc_object)
+```
+
+## Score the new prospects
+
+```{r}
+myScoreData <- read_csv("Gym_Score.csv")
+head(myScoreData)
+myScoreData1 <- scale(myScoreData)
+KNN_Score<-predict(KNN_fit, newdata = myScoreData1)
+myScoreData <- data.frame(myScoreData, KNN_Score)
+head(myScoreData)
+```
+
+
+```{r}
+view(myScoreData)
+```
+
+
+
+
+
+

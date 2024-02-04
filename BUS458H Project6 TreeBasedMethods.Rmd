@@ -1,0 +1,313 @@
+---
+title: "Project 6: Tree Based Methods"
+author: "Nash Lawrence & Kevin Wlosinski"
+date: "11/4/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(gains)
+library(rpart)
+library(rpart.plot)
+library(pROC)
+library(randomForest)
+library(dplyr)
+library(tidyverse)
+library(adabag)
+```
+
+## Read the data file
+
+```{r cars}
+myData <- read_csv("C:/Users/stewi/BUS 458H/HELOC.csv")
+
+# Convert the response, and sex variables to nominal
+myData$HELOC <- as.factor(myData$HELOC)
+myData$Sex <- as.factor(myData$Sex)
+head(myData)
+```
+
+## Create the training and validation data sets
+
+```{r}
+set.seed(1)
+myIndex <- createDataPartition(myData$HELOC, p=0.6, list=FALSE)
+trainSet <- myData[myIndex,]
+validationSet <- myData[-myIndex,]
+```
+
+## Create the default decision tree
+
+```{r}
+set.seed(1)
+default_tree <- rpart(HELOC ~ ., data = trainSet, method="class")
+summary(default_tree)
+```
+***xerror = Cross-Validation Error Rate; if it continued, would start going back up because it is a U-curve***
+
+```{r}
+prp(default_tree, type = 1, extra = 1, under = TRUE)
+```
+
+
+
+## Get the full tree
+
+```{r}
+set.seed(1)
+full_tree <- rpart(HELOC ~ ., data = trainSet, method = "class", cp=0, minsplit = 2, minbucket = 1)
+# Do not use the prp function to display the full tree
+printcp(full_tree)
+```
+***The Cross-validation error rate (xerror) starts going down as the number of splits increases because the tree becomes more complex. It begins to go back up after 11 splits because the tree is over fitted***
+
+ 
+## Prune the treee
+***The CP value in the pruned tree is 0.0256410 because when adding the xerror and xstd of the fitted complex tree you get 0.70513 + 0.085923 = 0.791053, and the only less complex tree with a xerror rate lower than that is the 5th tree with an xerror rate of 0.75641, and the CP value of that tree is 0.0256410***
+
+```{r}
+pruned_tree <- prune(full_tree, cp = 0.0256410)
+prp(pruned_tree, type = 1, extra = 1, under = TRUE)
+```
+***Root Node in this tree is Sex***
+
+
+## Generate the performance metrics
+
+```{r}
+predicted_class <- predict(pruned_tree, validationSet, type="class")
+confusionMatrix(predicted_class, validationSet$HELOC, positive="1")
+```
+***Interpretations of the validation set model***
+Accuracy: (127 + 35)/200 = 0.81, the model predicts the correct class of the HELOC variable 81% of the time.
+Sensitivity: 35/(35 + 17) = 0.6731, the model correctly predicts Class 1 observations to be Class 1 67.31% of the time.
+Specificity: 127/(127 + 21) = 0.8581, the model correctly predicts Class 0 observations to be Class 0 85.81% of the time.
+Misclassification Rate: (21 + 17)/200 = 0.19, the model incorrectly predicts the Class of the HELOC variable 19% of the time.
+
+This model is best at predicting which observations are Class 0 for the HELOC variable
+
+
+## Create the gains table
+
+```{r}
+predicted_prob <- predict(pruned_tree, validationSet, type = "prob")
+validationSet$HELOC <- as.numeric(as.character(validationSet$HELOC))
+gains_table <- gains(validationSet$HELOC, predicted_prob[,2])
+gains_table
+```
+
+## Lift Charts, ROC curves, C statistic
+
+```{r}
+plot(c(0,gains_table$cume.pct.of.total*sum(validationSet$HELOC))~c(0,gains_table$cume.obs), xlab ="# of cases", ylab ="Cumulative", main ="Cumulative Lift Chart", type="l")
+lines(c(0,sum(validationSet$HELOC))~c(0,dim(validationSet)[1]),col="red",lty=2)
+```
+
+```{r}
+barplot(gains_table$mean.resp/mean(validationSet$HELOC), names.arg=gains_table$depth, xlab="Percentile", ylab="Lift", ylim=c(0,3), main ="Decile-Wise Lift Chart\n")
+```
+
+
+```{r}
+roc_object <- roc(validationSet$HELOC,predicted_prob[,2])
+plot.roc(roc_object)
+auc(roc_object)
+```
+
+***C-Statistic = 0.8408, using this model we are 84.08% accurate in discriminating between individuals in Class 0 and Class 1 of the HELOC variable***
+
+
+## Create the first ensemble model: Bagging
+
+***mtry = 3 tells function to use all 3 predictors when building a tree because Bagging uses all of the predictors in the data. Ex- if model had 14 predictors then mtry = 14***
+
+```{r}
+set.seed(1)
+bagging_tree <- randomForest(HELOC~., data=trainSet, ntree=100, mtry=3, importance=T)
+varImpPlot(bagging_tree, type=1)
+```
+
+```{r}
+summary(bagging_tree)
+```
+
+
+
+## Create the confusion matrix
+
+```{r}
+predicted_Class <- as.factor(predict(bagging_tree,validationSet))
+validationSet$HELOC <- as.factor(validationSet$HELOC)
+confusionMatrix(predicted_Class, validationSet$HELOC, positive="1")
+```
+***Interpretations of Bagging model***
+Accuracy: (125 + 35)/200 = 0.80, the bagging model predicts the correct class of the HELOC variable 80% of the time.
+Sensitivity: 35/(35 + 17) = 0.6731, the bagging model correctly predicts Class 1 observations to be Class 1 67.31% of the time.
+Specificity: 125/(125 + 23) = 0.8446, the bagging model correctly predicts Class 0 observations to be Class 0 84.46% of the time.
+Misclassification Rate: (23 + 17)/200 = 0.20, the bagging model incorrectly predicts the class of the HELOC variable 20% of the time.
+
+The Bagging model best predicts which observations are Class 0 for the HELOC variable, similar to the validation set but a tad less accurate.
+
+
+## Create the cumulative lift table
+
+```{r}
+predicted_prob <- predict(bagging_tree, validationSet, type="prob")
+head(predicted_prob)
+validationSet$HELOC <- as.numeric(as.character(validationSet$HELOC))
+gains_table<-gains(validationSet$HELOC, predicted_prob[,2])
+gains_table
+```
+
+## Create the performance based charts
+
+```{r}
+plot(c(0,gains_table$cume.pct.of.total*sum(validationSet$HELOC))~c(0,gains_table$cume.obs), xlab="# of cases", ylab="Cumulative", main="Cumulative Lift Chart", type="l")
+lines(c(0,sum(validationSet$HELOC))~c(0,dim(validationSet)[1]),col="red",lty=2)
+```
+
+```{r}
+par(mar=c(1,1,1,1))
+barplot(gains_table$mean.resp/mean(validationSet$HELOC), names.arg=gains_table$depth, xlab="Percentile", ylab="Lift", ylim=c(0,3), main="Decile-Wise Lift Chart")
+```
+
+```{r}
+roc_object <- roc(validationSet$HELOC,predicted_prob[,2])
+par(mar=c(1,1,1,1))
+plot.roc(roc_object)
+auc(roc_object)
+```
+
+***C-Statistic = 0.8607, using the Bagging model we are 86.07% accurate in discriminating between individuals in Class 0 and Class 1 of the HELOC variable***
+
+
+
+## Conduct a Random Forest
+***mtry = 2, because in a Random Forest each split uses a random sample of 'm' predictors is chosen as split candidates from the full set of 'p' predictors. We get this number by calculating the Square Root of the number of predictors (3), which gives us 1.732 and is rounded up to 2.***
+
+```{r}
+set.seed(1)
+randomforest_tree <- randomForest(HELOC~., data=trainSet, ntree=100, mtry=2, importance=T)
+varImpPlot(randomforest_tree, type=1)
+```
+
+```{r}
+summary(randomforest_tree)
+```
+
+
+
+## Create the confusion matrix
+
+```{r}
+predicted_Class <- as.factor(predict(randomforest_tree,validationSet))
+validationSet$HELOC <- as.factor(validationSet$HELOC)
+confusionMatrix(predicted_Class, validationSet$HELOC, positive="1")
+```
+
+***Interpretations of Random Forest model***
+-Accuracy: (125 + 32)/200 = 0.785, the Random Forest model predicts the correct class of the HELOC variable 78.5% of the time.
+-Sensitivity: 32/(32 + 20) = 0.6154, the Random Forest model correctly predicts Class 1 observations to be Class 1 61.54% of the time.
+-Specificity: 125/(125 + 23) = 0.8446, the Random Forest model correctly predicts Class 0 observations to be Class 0 84.46% of the time.
+-Misclassification Rate: (23 + 20)/200 = 0.215, the Random Forest model incorrectly predicts the class of the HELOC variable 21.5% of the time.
+
+The Random Forest model has the same Specificity as the Bagging model, but is less accurate at predicting Class 1 observations to be Class 1 as shown in the Sensitivity.
+
+
+
+## Create the cumulative lift table
+
+```{r}
+predicted_prob <- predict(randomforest_tree, validationSet, type="prob")
+head(predicted_prob)
+validationSet$HELOC <- as.numeric(as.character(validationSet$HELOC))
+gains_table <- gains(validationSet$HELOC, predicted_prob[,2])
+gains_table
+```
+
+## Create the performance based charts
+
+```{r}
+plot(c(0,gains_table$cume.pct.of.total*sum(validationSet$HELOC))~c(0,gains_table$cume.obs), xlab="# of cases", ylab="Cumulative", main="Cumulative Lift Chart", type="l")
+lines(c(0,sum(validationSet$HELOC))~c(0,dim(validationSet)[1]),col="red",lty=2)
+```
+
+```{r}
+barplot(gains_table$mean.resp/mean(validationSet$HELOC), names.arg=gains_table$depth, xlab="Percentile", ylab="Lift", ylim=c(0,3), main="Decile-Wise Lift Chart")
+```
+
+```{r}
+roc_object <- roc(validationSet$HELOC,predicted_prob[,2])
+plot.roc(roc_object)
+auc(roc_object)
+```
+
+***C-Statistic = 0.855, using the Random Forest model we are 85.50% accurate in discriminating between individuals in Class 0 and Class 1 of the HELOC variable***
+
+
+## Created Boosted Trees
+
+```{r}
+myData <- data.frame(myData)
+myData$HELOC <- as.factor(myData$HELOC)
+myData$Sex <- as.factor(myData$Sex)
+set.seed(1)
+myIndex <- createDataPartition(myData$HELOC, p=0.6, list=FALSE)
+trainSet <- myData[myIndex,]
+validationSet <- myData[-myIndex,]
+set.seed(1)
+boosting_tree <- boosting(HELOC~Age+Sex+Income, data=trainSet, boos=T, mfinal=100)
+summary(boosting_tree)
+```
+
+
+## Create the confusion matrix
+
+```{r}
+prediction <- predict(boosting_tree, validationSet)
+confusionMatrix(as.factor(prediction$class), validationSet$HELOC, positive="1")
+```
+
+***Interpretations of Boosting model***
+-Accuracy: (123 + 30)/200 = 0.765, the Boosting model predicts the correct class of the HELOC variable 76.5% of the time.
+-Sensitivity: 30/(30 + 22) = 0.5769, the Boosting model correctly predicts Class 1 observations to be Class 1 57.69% of the time.
+-Specificity: 123/(123 + 25) = 0.8311, the Boosting model correctly predicts Class 0 observations to be Class 0 83.11% of the time.
+-Misclassification Rate: (25 + 22)/200 = 0.235, the Boosting model incorrectly predicts the class of the HELOC variable 23.5% of the time.
+
+The Boosting model is the least accurate model overall and for predicting each observation's class for the HELOC variable.
+
+
+## Create the cumulative lift table
+
+```{r}
+validationSet$HELOC <- as.numeric(as.character(validationSet$HELOC))
+gains_table <- gains(validationSet$HELOC, predicted_prob[,2])
+gains_table
+```
+
+## Create the performance based charts
+
+```{r}
+plot(c(0,gains_table$cume.pct.of.total*sum(validationSet$HELOC))~c(0,gains_table$cume.obs), xlab="# of cases", ylab="Cumulative", main="Cumulative Lift Chart", type="l")
+lines(c(0,sum(validationSet$HELOC))~c(0,dim(validationSet)[1]),col="red",lty=2)
+```
+
+```{r}
+barplot(gains_table$mean.resp/mean(validationSet$HELOC), names.arg=gains_table$depth, xlab="Percentile", ylab="Lift", ylim=c(0,3), main="Decile-Wise Lift Chart")
+```
+
+```{r}
+roc_object <- roc(validationSet$HELOC,predicted_prob[,2])
+plot.roc(roc_object)
+auc(roc_object)
+```
+
+***C-Statistic = 0.855, using the Boosting model we are 85.50% accurate in discriminating between individuals in Class 0 and Class 1 of the HELOC variable***
+
+
+
+
